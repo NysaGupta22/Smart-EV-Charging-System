@@ -1,7 +1,8 @@
 import heapq
 from datetime import datetime, timedelta
 from qr_generator import generate_qr
-
+from gate_validator import validate_qr
+from firebase_service import upload_schedule
 class ChargingStation:
 
     def __init__(self, total_chargers=3, charger_power=7, target_soc=80):
@@ -102,3 +103,14 @@ if __name__ == "__main__":
         print(f"QR generated for {r['EV_ID']}")
         print(f"Saved at: {qr_path}")
         print(f"Payload: {payload}\n")
+   
+
+    print("\n--- Simulating Gate Scan ---\n")
+    for r in results["scheduled"]:
+        qr_path, payload = generate_qr(r)
+        print(f"Scanning QR for {r['EV_ID']}...")
+        validate_qr(payload)
+
+
+upload_schedule(results)
+print("✅ Schedule uploaded to Firebase")
