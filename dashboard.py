@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from firebase_service import get_station_summary
+from firebase_service import get_station_summary, get_vehicle_usage
 from tariff_engine import TariffEngine, TARIFF_SCHEDULE
 
 st.set_page_config(
@@ -453,6 +453,7 @@ schedule     = data.get("schedule", {})
 c_status     = data.get("charger_status", {})
 load_st      = data.get("load_status", {})
 grid_st      = data.get("grid_status", {})
+vehicle_usage_all = data.get("vehicle_usage", {}) or {}
 immediate    = schedule.get("immediate", []) or []
 sched_later  = schedule.get("scheduled", []) or []
 all_slots    = immediate + sched_later
@@ -580,7 +581,84 @@ if st.session_state.view == "owner":
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # QR
+        # ── 1. Slot notification ─────────────────────────────────
+        if not is_now and my_slot:
+            try:
+                start_dt = start if hasattr(start, 'hour') else datetime.strptime(str(start), "%Y-%m-%d %H:%M:%S")
+                mins_until = int((start_dt - datetime.now()).total_seconds() / 60)
+                if 0 < mins_until <= 15:
+                    st.toast(f"⚡ Your slot starts in {mins_until} min — head to Charger {charger} now!", icon="⚡")
+                    st.markdown(f"""
+                    <div style="background:#0a2018;border:1px solid #2ecc71;border-radius:12px;
+                                padding:1rem 1.4rem;margin:0 0 0 0;display:flex;align-items:center;gap:12px;
+                                animation:pulse 2s ease-in-out infinite">
+                        <span style="font-size:1.4rem">⚡</span>
+                        <div>
+                            <div style="font-family:'Outfit',sans-serif;font-size:1rem;font-weight:700;color:#2ecc71;margin-bottom:0.2rem">
+                                Slot starting in {mins_until} min
+                            </div>
+                            <div style="font-family:'DM Mono',monospace;font-size:0.8rem;color:#8ab8a0">
+                                Head to Charger {charger} now · Bring your QR code
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                elif mins_until <= 0 and mins_until > -10:
+                    st.markdown(f"""
+                    <div style="background:#0a2018;border:1px solid #f59e0b;border-radius:12px;
+                                padding:1rem 1.4rem;margin:0 0 0 0;display:flex;align-items:center;gap:12px">
+                        <span style="font-size:1.4rem">⏰</span>
+                        <div>
+                            <div style="font-family:'Outfit',sans-serif;font-size:1rem;font-weight:700;color:#f59e0b;margin-bottom:0.2rem">
+                                Your slot is open now
+                            </div>
+                            <div style="font-family:'DM Mono',monospace;font-size:0.8rem;color:#8ab8a0">
+                                Charger {charger} · 10 min grace period applies
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            except Exception:
+                pass
+
+        # ── 2. Peak hour warning ──────────────────────────────────
+        if my_slot and not is_now:
+            try:
+                current_rate = my_slot.get("Tariff_Rate", 0)
+                delayed = my_slot.get("Tariff_Delayed", False)
+                if isinstance(current_rate, (int, float)) and float(current_rate) >= 9.0 and not delayed:
+                    # Find cheapest rate in next 8 hours
+                    best_hour = min(range(24), key=lambda h: TARIFF_SCHEDULE[h])
+                    best_rate = TARIFF_SCHEDULE[best_hour]
+                    kwh = my_slot.get("Estimated_kWh", 0)
+                    if isinstance(kwh, (int, float)) and kwh > 0:
+                        current_cost = round(float(kwh) * float(current_rate), 2)
+                        best_cost    = round(float(kwh) * best_rate, 2)
+                        savings      = round(current_cost - best_cost, 2)
+                        if savings > 0:
+                            st.markdown(f"""
+                            <div style="background:#1a1208;border:1px solid rgba(245,158,11,0.4);
+                                        border-radius:12px;padding:1.2rem 1.4rem;
+                                        margin:1.5rem 0 0 0;display:flex;align-items:flex-start;gap:12px">
+                                <span style="font-size:1.4rem;flex-shrink:0">💡</span>
+                                <div style="flex:1">
+                                    <div style="font-family:'Outfit',sans-serif;font-size:1rem;
+                                                font-weight:700;color:#f59e0b;margin-bottom:0.4rem">
+                                        Peak hour — you could save ₹{savings}
+                                    </div>
+                                    <div style="font-family:'DM Mono',monospace;font-size:0.82rem;
+                                                color:#8ab8a0;line-height:1.7">
+                                        Current rate: <span style="color:#ef4444">₹{current_rate}/kWh (PEAK)</span><br>
+                                        Cheapest rate: <span style="color:#2ecc71">₹{best_rate}/kWh at {best_hour:02d}:00 (OFF-PEAK)</span><br>
+                                        Charging after midnight could save you <span style="color:#f59e0b;font-weight:500">₹{savings}</span> on this session.
+                                    </div>
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+            except Exception:
+                pass
+
+        # ── QR ────────────────────────────────────────────────────
         if not is_now:
             st.markdown('<div class="vp-section">', unsafe_allow_html=True)
             st.markdown('<div class="vp-section-title">Gate access QR</div>', unsafe_allow_html=True)
@@ -601,15 +679,15 @@ if st.session_state.view == "owner":
                         <div style="display:flex;flex-direction:column;gap:0.8rem">
                             <div style="display:flex;gap:10px;align-items:flex-start">
                                 <span style="background:#0a2018;border:1px solid #1a4a2a;color:#2ecc71;font-family:DM Mono,monospace;font-size:0.65rem;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">1</span>
-                                <span style="font-size:0.85rem;color:#c0d8c8;line-height:1.5">Arrive at <b style="color:#f0faf4">Charger {charger}</b> at your scheduled time</span>
+                                <span style="font-size:0.9rem;color:#e0ede8;line-height:1.5">Arrive at <b style="color:#ffffff">Charger {charger}</b> at your scheduled time</span>
                             </div>
                             <div style="display:flex;gap:10px;align-items:flex-start">
                                 <span style="background:#0a2018;border:1px solid #1a4a2a;color:#2ecc71;font-family:DM Mono,monospace;font-size:0.65rem;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">2</span>
-                                <span style="font-size:0.85rem;color:#c0d8c8;line-height:1.5">Scan QR at the gate terminal</span>
+                                <span style="font-size:0.9rem;color:#e0ede8;line-height:1.5">Scan QR at the gate terminal</span>
                             </div>
                             <div style="display:flex;gap:10px;align-items:flex-start">
                                 <span style="background:#0a2018;border:1px solid #1a4a2a;color:#2ecc71;font-family:DM Mono,monospace;font-size:0.65rem;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">3</span>
-                                <span style="font-size:0.85rem;color:#c0d8c8;line-height:1.5">10-minute grace period applies</span>
+                                <span style="font-size:0.9rem;color:#e0ede8;line-height:1.5">10-minute grace period applies</span>
                             </div>
                         </div>
                         <div class="vp-divider"></div>
@@ -622,6 +700,53 @@ if st.session_state.view == "owner":
             else:
                 st.info("QR not yet generated — run scheduler_v2.py first.")
             st.markdown('</div>', unsafe_allow_html=True)
+
+        # ── 3. Session history ────────────────────────────────────
+        usage = vehicle_usage_all.get(selected, {}) if vehicle_usage_all else {}
+
+        st.markdown('<div class="vp-section">', unsafe_allow_html=True)
+        st.markdown('<div class="vp-section-title">Session history</div>', unsafe_allow_html=True)
+
+        if usage and usage.get("total_sessions", 0) > 0:
+            total_sessions = usage.get("total_sessions", 0)
+            total_kwh      = usage.get("total_kwh", 0)
+            total_spent    = usage.get("total_revenue_inr", 0)
+            last_charged   = usage.get("last_charged", "—")
+            avg_kwh        = round(total_kwh / total_sessions, 2) if total_sessions > 0 else 0
+            avg_cost       = round(total_spent / total_sessions, 2) if total_sessions > 0 else 0
+
+            h1, h2, h3, h4 = st.columns(4)
+            for col, lbl, val, unit in [
+                (h1, "Total sessions",  str(total_sessions), "charges"),
+                (h2, "Total energy",    f"{total_kwh}",      "kWh used"),
+                (h3, "Total spent",     f"₹{total_spent}",   "lifetime"),
+                (h4, "Avg per session", f"₹{avg_cost}",      f"~{avg_kwh} kWh"),
+            ]:
+                with col:
+                    st.markdown(f"""
+                    <div class="vp-metric g">
+                        <div class="vp-metric-label">{lbl}</div>
+                        <div class="vp-metric-val">{val}</div>
+                        <div class="vp-metric-unit">{unit}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+            st.markdown(f"""
+            <div style="font-family:'DM Mono',monospace;font-size:0.78rem;color:#8ab8a0;
+                        margin-top:1rem;padding-top:1rem;border-top:1px solid #0f2a1a">
+                Last charged: <span style="color:#e0ede8">{last_charged}</span>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style="font-family:'DM Mono',monospace;font-size:0.85rem;color:#3a6a4a;
+                        padding:1rem 0;font-style:italic">
+                No previous sessions found for this vehicle.
+                History appears here after your first completed charge.
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
 
     # Tariff chart
     st.markdown('<div class="vp-section">', unsafe_allow_html=True)
