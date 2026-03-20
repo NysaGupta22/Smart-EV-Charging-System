@@ -214,12 +214,26 @@ grid_summary = {
     "full_power":    0,
     "throttled":     5,
     "suspended":     0,
-    "decisions": [
-        {"ev_id":"EV_ALPHA",   "grid_signal":72, "grid_state":"stressed", "action":"throttle", "allowed_kw":4.9, "throttle_factor":0.7, "message":"Grid STRESSED — throttled to 70% (4.9kW)", "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
-        {"ev_id":"EV_BETA",    "grid_signal":72, "grid_state":"stressed", "action":"throttle", "allowed_kw":4.9, "throttle_factor":0.7, "message":"Grid STRESSED — throttled to 70% (4.9kW)", "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
-        {"ev_id":"EV_GAMMA",   "grid_signal":72, "grid_state":"stressed", "action":"throttle", "allowed_kw":4.9, "throttle_factor":0.7, "message":"Grid STRESSED — throttled to 70% (4.9kW)", "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
-        {"ev_id":"EV_DELTA",   "grid_signal":72, "grid_state":"stressed", "action":"throttle", "allowed_kw":4.9, "throttle_factor":0.7, "message":"Grid STRESSED — throttled to 70% (4.9kW)", "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
-        {"ev_id":"EV_EPSILON", "grid_signal":72, "grid_state":"stressed", "action":"throttle", "allowed_kw":4.9, "throttle_factor":0.7, "message":"Grid STRESSED — throttled to 70% (4.9kW)", "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
+   "decisions": [
+    {"ev_id":"EV_ALPHA",   "grid_signal":72, "grid_state":"stressed",
+     "action":"full",     "allowed_kw":7.0, "throttle_factor":1.0,
+     "message":"Emergency vehicle — full power override (grid exempt)"},
+
+    {"ev_id":"EV_BETA",    "grid_signal":72, "grid_state":"stressed",
+     "action":"throttle", "allowed_kw":4.9, "throttle_factor":0.7,
+     "message":"Grid STRESSED — throttled to 70% (4.9kW)"},
+
+    {"ev_id":"EV_GAMMA",   "grid_signal":72, "grid_state":"stressed",
+     "action":"throttle", "allowed_kw":4.9, "throttle_factor":0.7,
+     "message":"Grid STRESSED — throttled to 70% (4.9kW)"},
+
+    {"ev_id":"EV_DELTA",   "grid_signal":72, "grid_state":"stressed",
+     "action":"throttle", "allowed_kw":4.9, "throttle_factor":0.7,
+     "message":"Grid STRESSED — throttled to 70% (4.9kW)"},
+
+    {"ev_id":"EV_EPSILON", "grid_signal":72, "grid_state":"stressed",
+     "action":"v2g",      "allowed_kw":-6.0, "throttle_factor":-0.86,
+     "message":"V2G active — discharging 6kW back to grid, earning ₹6/kWh"},
     ]
 }
 upload_grid_summary(grid_summary)
