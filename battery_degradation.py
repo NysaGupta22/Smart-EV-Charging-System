@@ -13,7 +13,7 @@ References:
     - Millner, "Modeling Lithium Ion Battery Degradation in
       Electric Vehicles" (IEEE CIASG, 2010)
 """
-
+        
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional

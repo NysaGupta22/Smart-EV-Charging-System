@@ -1,25 +1,7 @@
 """
-demo_mode.py — One-Click Demo Setup for Presentation
-Populates Firebase with a carefully crafted scenario that shows
-every feature of the system working simultaneously.
-
-Run this 2 minutes before your demo:
-    PYTHONPATH=. python3 demo_mode.py
-
-What it sets up:
-    Charger 1 → EV_ALPHA  EMERGENCY, charging now, throttled by grid
-    Charger 2 → EV_BETA   Low SOC (8%), charging now
-    Charger 3 → EV_GAMMA  Scheduled off-peak, QR generated, peak warning
-    EV_DELTA  → Queued, scheduled off-peak slot
-    EV_EPSILON→ Queued, standard rate
-
-Dashboard will show:
-    - Load bar at 84% (HIGH state)
-    - Grid STRESSED at 72/100
-    - Emergency vehicle on Charger 1
-    - Peak hour warning for EV_GAMMA
-    - Tariff savings card
-    - Session history for returning vehicles
+demo_mode.py — Presentation Demo Setup
+Run this on the morning of your presentation.
+Sets up slots so EV_GAMMA is always valid for QR scanning during 9am-6pm.
 """
 
 from datetime import datetime, timedelta
@@ -29,30 +11,32 @@ from firebase_service import (
     upload_energy_log
 )
 from qr_generator import generate_qr
-from grid_aware_charger import GridSignal
+from firebase_admin import db as rtdb
 
 now = datetime.now()
 
 print("\n" + "="*60)
-print("  VoltPort Demo Mode — Setting up presentation scenario")
+print("  VoltPort Demo Mode — Presentation Setup")
+print(f"  Current time: {now.strftime('%H:%M')}")
 print("="*60)
 
-
-# ── 1. Craft the schedule ────────────────────────────────────────────────────
+# ── EV_GAMMA slot is fixed 9AM to 6PM today — always valid during presentation
+slot_start = now.replace(hour=9,  minute=0, second=0, microsecond=0)   # 9:00 AM
+slot_end   = now.replace(hour=18, minute=0, second=0, microsecond=0)   # 6:00 PM
 
 immediate = [
     {
         "EV_ID":               "EV_ALPHA",
         "Charger":             1,
-        "Start_Time":          (now - timedelta(minutes=20)).strftime("%Y-%m-%d %H:%M:%S"),
-        "End_Time":            (now + timedelta(hours=1, minutes=40)).strftime("%Y-%m-%d %H:%M:%S"),
+        "Start_Time":          (now - timedelta(minutes=45)).strftime("%Y-%m-%d %H:%M:%S"),
+        "End_Time":            (now + timedelta(hours=1, minutes=30)).strftime("%Y-%m-%d %H:%M:%S"),
         "Emergency":           True,
         "SOC":                 12,
         "Wait_Minutes":        0,
-        "Allocated_kW":        4.9,
+        "Allocated_kW":        7.0,
         "Effective_kW":        4.9,
         "Grid_State":          "stressed",
-        "Grid_Action":         "throttle",
+        "Grid_Action":         "full",
         "Tariff_Rate":         9.0,
         "Tariff_Band":         "peak",
         "Tariff_Delayed":      False,
@@ -63,7 +47,7 @@ immediate = [
         "Recommended_Target_SOC": 80,
         "Recommended_kW":      4.9,
         "C_Rate":              0.08,
-        "Battery_Warnings":    ["Deep discharge detected (12% SOC) — damages anode over time"],
+        "Battery_Warnings":    ["Deep discharge detected (12% SOC)"],
         "V2G_Eligible":        False,
         "V2G_Active":          False,
         "V2G_Earning_INR":     0,
@@ -71,8 +55,8 @@ immediate = [
     {
         "EV_ID":               "EV_BETA",
         "Charger":             2,
-        "Start_Time":          (now - timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M:%S"),
-        "End_Time":            (now + timedelta(hours=5, minutes=20)).strftime("%Y-%m-%d %H:%M:%S"),
+        "Start_Time":          (now - timedelta(minutes=20)).strftime("%Y-%m-%d %H:%M:%S"),
+        "End_Time":            (now + timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S"),
         "Emergency":           False,
         "SOC":                 8,
         "Wait_Minutes":        0,
@@ -91,24 +75,24 @@ immediate = [
         "Recommended_kW":      3.5,
         "C_Rate":              0.07,
         "Battery_Warnings":    [
-            "Deep discharge detected (8% SOC) — damages anode over time",
-            "Battery health at 76.0% — reduced charging rate recommended",
+            "Deep discharge detected (8% SOC)",
+            "Battery health at 76% — reduced rate recommended",
         ],
         "V2G_Eligible":        False,
         "V2G_Active":          False,
         "V2G_Earning_INR":     0,
     },
-]
-
-scheduled = [
+    # ── EV_GAMMA — QR DEMO VEHICLE ────────────────────────────
+    # Slot fixed: 9:00 AM to 6:00 PM today
+    # QR will ALWAYS be valid during presentation hours
     {
         "EV_ID":               "EV_GAMMA",
         "Charger":             3,
-        "Start_Time":          (now + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"),
-        "End_Time":            (now + timedelta(hours=6)).strftime("%Y-%m-%d %H:%M:%S"),
+        "Start_Time":          slot_start.strftime("%Y-%m-%d %H:%M:%S"),
+        "End_Time":            slot_end.strftime("%Y-%m-%d %H:%M:%S"),
         "Emergency":           False,
         "SOC":                 35,
-        "Wait_Minutes":        60,
+        "Wait_Minutes":        0,
         "Allocated_kW":        7.0,
         "Effective_kW":        4.9,
         "Grid_State":          "stressed",
@@ -128,14 +112,17 @@ scheduled = [
         "V2G_Active":          False,
         "V2G_Earning_INR":     0,
     },
+]
+
+scheduled = [
     {
         "EV_ID":               "EV_DELTA",
         "Charger":             1,
-        "Start_Time":          (now + timedelta(hours=2, minutes=30)).strftime("%Y-%m-%d %H:%M:%S"),
-        "End_Time":            (now + timedelta(hours=6, minutes=30)).strftime("%Y-%m-%d %H:%M:%S"),
+        "Start_Time":          (now + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S"),
+        "End_Time":            (now + timedelta(hours=5)).strftime("%Y-%m-%d %H:%M:%S"),
         "Emergency":           False,
         "SOC":                 45,
-        "Wait_Minutes":        150,
+        "Wait_Minutes":        120,
         "Allocated_kW":        7.0,
         "Effective_kW":        4.9,
         "Grid_State":          "stressed",
@@ -158,11 +145,11 @@ scheduled = [
     {
         "EV_ID":               "EV_EPSILON",
         "Charger":             2,
-        "Start_Time":          (now + timedelta(hours=5, minutes=45)).strftime("%Y-%m-%d %H:%M:%S"),
-        "End_Time":            (now + timedelta(hours=8, minutes=15)).strftime("%Y-%m-%d %H:%M:%S"),
+        "Start_Time":          (now + timedelta(hours=3, minutes=30)).strftime("%Y-%m-%d %H:%M:%S"),
+        "End_Time":            (now + timedelta(hours=6)).strftime("%Y-%m-%d %H:%M:%S"),
         "Emergency":           False,
         "SOC":                 55,
-        "Wait_Minutes":        345,
+        "Wait_Minutes":        210,
         "Allocated_kW":        7.0,
         "Effective_kW":        7.0,
         "Grid_State":          "normal",
@@ -188,9 +175,7 @@ results = {"immediate": immediate, "scheduled": scheduled}
 upload_schedule(results)
 print("\n[1/6] Schedule uploaded")
 
-
-# ── 2. Load status ────────────────────────────────────────────────────────────
-
+# ── Load status
 load_status = {
     "total_kw":              21.0,
     "transformer_rating_kw": 25.0,
@@ -199,57 +184,52 @@ load_status = {
     "utilisation_pct":       84.0,
     "state":                 "high",
     "active_chargers":       {"1": 7.0, "2": 7.0, "3": 7.0},
-    "timestamp":             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    "timestamp":             now.strftime("%Y-%m-%d %H:%M:%S"),
 }
 upload_load_status(load_status)
 print("[2/6] Load status uploaded — 84% HIGH")
 
-
-# ── 3. Grid status ────────────────────────────────────────────────────────────
-
+# ── Grid status
 grid_summary = {
-    "grid_signal":   72,
-    "grid_state":    "stressed",
+    "grid_signal":    72,
+    "grid_state":     "stressed",
     "total_vehicles": 5,
-    "full_power":    0,
-    "throttled":     5,
-    "suspended":     0,
-   "decisions": [
-    {"ev_id":"EV_ALPHA",   "grid_signal":72, "grid_state":"stressed",
-     "action":"full",     "allowed_kw":7.0, "throttle_factor":1.0,
-     "message":"Emergency vehicle — full power override (grid exempt)"},
-
-    {"ev_id":"EV_BETA",    "grid_signal":72, "grid_state":"stressed",
-     "action":"throttle", "allowed_kw":4.9, "throttle_factor":0.7,
-     "message":"Grid STRESSED — throttled to 70% (4.9kW)"},
-
-    {"ev_id":"EV_GAMMA",   "grid_signal":72, "grid_state":"stressed",
-     "action":"throttle", "allowed_kw":4.9, "throttle_factor":0.7,
-     "message":"Grid STRESSED — throttled to 70% (4.9kW)"},
-
-    {"ev_id":"EV_DELTA",   "grid_signal":72, "grid_state":"stressed",
-     "action":"throttle", "allowed_kw":4.9, "throttle_factor":0.7,
-     "message":"Grid STRESSED — throttled to 70% (4.9kW)"},
-
-    {"ev_id":"EV_EPSILON", "grid_signal":72, "grid_state":"stressed",
-     "action":"v2g",      "allowed_kw":-6.0, "throttle_factor":-0.86,
-     "message":"V2G active — discharging 6kW back to grid, earning ₹6/kWh"},
+    "full_power":     1,
+    "throttled":      4,
+    "suspended":      0,
+    "decisions": [
+        {"ev_id":"EV_ALPHA",   "grid_signal":72, "grid_state":"stressed",
+         "action":"full",     "allowed_kw":7.0, "throttle_factor":1.0,
+         "message":"Emergency vehicle — full power override (grid exempt)",
+         "timestamp": now.strftime("%Y-%m-%d %H:%M:%S")},
+        {"ev_id":"EV_BETA",    "grid_signal":72, "grid_state":"stressed",
+         "action":"throttle", "allowed_kw":4.9, "throttle_factor":0.7,
+         "message":"Grid STRESSED — throttled to 70% (4.9kW)",
+         "timestamp": now.strftime("%Y-%m-%d %H:%M:%S")},
+        {"ev_id":"EV_GAMMA",   "grid_signal":72, "grid_state":"stressed",
+         "action":"throttle", "allowed_kw":4.9, "throttle_factor":0.7,
+         "message":"Grid STRESSED — throttled to 70% (4.9kW)",
+         "timestamp": now.strftime("%Y-%m-%d %H:%M:%S")},
+        {"ev_id":"EV_DELTA",   "grid_signal":72, "grid_state":"stressed",
+         "action":"throttle", "allowed_kw":4.9, "throttle_factor":0.7,
+         "message":"Grid STRESSED — throttled to 70% (4.9kW)",
+         "timestamp": now.strftime("%Y-%m-%d %H:%M:%S")},
+        {"ev_id":"EV_EPSILON", "grid_signal":72, "grid_state":"stressed",
+         "action":"v2g",      "allowed_kw":-6.0, "throttle_factor":-0.86,
+         "message":"V2G active — discharging 6kW to grid, earning ₹6/kWh",
+         "timestamp": now.strftime("%Y-%m-%d %H:%M:%S")},
     ]
 }
 upload_grid_summary(grid_summary)
 print("[3/6] Grid status uploaded — STRESSED 72/100")
 
-
-# ── 4. Charger statuses ───────────────────────────────────────────────────────
-
-update_charger_status(1, "charging",  ev_id="EV_ALPHA",   allowed_kw=4.9)
-update_charger_status(2, "charging",  ev_id="EV_BETA",    allowed_kw=4.9)
-update_charger_status(3, "reserved",  ev_id="EV_GAMMA",   allowed_kw=4.9)
+# ── Charger statuses
+update_charger_status(1, "charging",  ev_id="EV_ALPHA",  allowed_kw=7.0)
+update_charger_status(2, "charging",  ev_id="EV_BETA",   allowed_kw=4.9)
+update_charger_status(3, "charging",  ev_id="EV_GAMMA",  allowed_kw=4.9)
 print("[4/6] Charger statuses updated")
 
-
-# ── 5. Session history for returning vehicles ─────────────────────────────────
-
+# ── Session history
 histories = {
     "EV_ALPHA": {
         "ev_id":             "EV_ALPHA",
@@ -273,49 +253,45 @@ histories = {
         "last_charged":      (now - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"),
     },
 }
-
-from firebase_service import db
-from firebase_admin import db as rtdb
-
 for ev_id, history in histories.items():
     rtdb.reference(f"vehicle_usage/{ev_id}").set(history)
+print("[5/6] Session history uploaded")
 
-print("[5/6] Session history uploaded for returning vehicles")
-
-
-# ── 6. QR codes for scheduled vehicles ───────────────────────────────────────
-
-for slot in scheduled:
+# ── QR codes
+for slot in immediate:
     try:
-        qr_path, payload = generate_qr(slot)
-        if qr_path:
-            print(f"       QR generated: {qr_path}")
+        result = generate_qr(slot)
+        if result and result[0]:
+            print(f"       QR generated: {result[0]}")
     except Exception as e:
         print(f"       QR skipped for {slot['EV_ID']}: {e}")
-
 print("[6/6] QR codes generated")
 
-
-# ── Summary ───────────────────────────────────────────────────────────────────
-
 print("\n" + "="*60)
-print("  Demo ready! Open your dashboard now.")
+print("  Demo ready!")
 print("="*60)
 print(f"""
-What to show professors:
+QR DEMO VEHICLE: EV_GAMMA
+  Charger:    03
+  Slot open:  {slot_start.strftime('%H:%M')} — {slot_end.strftime('%H:%M')}
+  Status:     CHARGING NOW (valid for gate scan)
 
-ADMIN VIEW:
-  → Load bar at 84% HIGH — transformer protection working
-  → Grid signal 72/100 STRESSED — smart throttling active
-  → Charger 1: EV_ALPHA EMERGENCY charging (priority queue)
-  → Charger 2: EV_BETA low battery charging
-  → Charger 3: EV_GAMMA RESERVED (scheduled off-peak)
-  → All vehicles throttled to 4.9kW (grid protection)
-  → Energy & cost charts showing per-vehicle breakdown
+PRESENTATION FLOW:
+  1. Open VoltPort website → Admin view
+     Show: load 84%, grid stressed, 3 chargers active
 
-OWNER VIEW (type each EV ID):
-  EV_ALPHA  → Emergency vehicle, charging now, session history (8 sessions)
-  EV_GAMMA  → Scheduled slot, QR code displayed, tariff saved ₹X
-  EV_BETA   → Low SOC vehicle, charging now, cost estimate
-  EV_DELTA  → Future slot, off-peak savings shown
+  2. Switch to Owner view → type EV_ALPHA
+     Show: emergency vehicle, full power, session history
+
+  3. Type EV_BETA
+     Show: low SOC, battery warnings, degraded health
+
+  4. Type EV_GAMMA
+     Show: QR code, valid slot, off-peak tariff saved
+
+  5. Run webcam_scanner.py → point at EV_GAMMA QR
+     Show: QR validated → Firebase → ESP32 → servo opens
+
+  6. Type EV_EPSILON in admin
+     Show: V2G active, earning ₹14.7
 """)
