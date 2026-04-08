@@ -1,7 +1,7 @@
 """
 demo_mode.py — Presentation Demo Setup
 Run this on the morning of your presentation.
-Sets up slots so EV_GAMMA is always valid for QR scanning during 9am-6pm.
+Sets up slots so EV_ALPHA and EV_GAMMA are always valid for QR scanning during 9am-6pm.
 """
 
 from datetime import datetime, timedelta
@@ -20,16 +20,17 @@ print("  VoltPort Demo Mode — Presentation Setup")
 print(f"  Current time: {now.strftime('%H:%M')}")
 print("="*60)
 
-# ── EV_GAMMA slot is fixed 9AM to 6PM today — always valid during presentation
+# ── Demo window: 9AM to 6PM today — always valid during presentation
 slot_start = now.replace(hour=9,  minute=0, second=0, microsecond=0)   # 9:00 AM
 slot_end   = now.replace(hour=18, minute=0, second=0, microsecond=0)   # 6:00 PM
 
 immediate = [
+    # ── EV_ALPHA — fixed to demo window so QR is always valid ──
     {
         "EV_ID":               "EV_ALPHA",
         "Charger":             1,
-        "Start_Time":          (now - timedelta(minutes=45)).strftime("%Y-%m-%d %H:%M:%S"),
-        "End_Time":            (now + timedelta(hours=1, minutes=30)).strftime("%Y-%m-%d %H:%M:%S"),
+        "Start_Time":          slot_start.strftime("%Y-%m-%d %H:%M:%S"),
+        "End_Time":            slot_end.strftime("%Y-%m-%d %H:%M:%S"),
         "Emergency":           True,
         "SOC":                 12,
         "Wait_Minutes":        0,
@@ -271,17 +272,16 @@ print("\n" + "="*60)
 print("  Demo ready!")
 print("="*60)
 print(f"""
-QR DEMO VEHICLE: EV_GAMMA
-  Charger:    03
-  Slot open:  {slot_start.strftime('%H:%M')} — {slot_end.strftime('%H:%M')}
-  Status:     CHARGING NOW (valid for gate scan)
+QR DEMO VEHICLES: EV_ALPHA + EV_GAMMA
+  EV_ALPHA — Charger 01 | Emergency | Slot: {slot_start.strftime('%H:%M')} — {slot_end.strftime('%H:%M')}
+  EV_GAMMA — Charger 03 | Off-peak  | Slot: {slot_start.strftime('%H:%M')} — {slot_end.strftime('%H:%M')}
 
 PRESENTATION FLOW:
   1. Open VoltPort website → Admin view
      Show: load 84%, grid stressed, 3 chargers active
 
   2. Switch to Owner view → type EV_ALPHA
-     Show: emergency vehicle, full power, session history
+     Show: emergency vehicle, full power, QR code, session history
 
   3. Type EV_BETA
      Show: low SOC, battery warnings, degraded health
@@ -289,7 +289,7 @@ PRESENTATION FLOW:
   4. Type EV_GAMMA
      Show: QR code, valid slot, off-peak tariff saved
 
-  5. Run webcam_scanner.py → point at EV_GAMMA QR
+  5. Run webcam_scanner.py → point at EV_ALPHA or EV_GAMMA QR
      Show: QR validated → Firebase → ESP32 → servo opens
 
   6. Type EV_EPSILON in admin
